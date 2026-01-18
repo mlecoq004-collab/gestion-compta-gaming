@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GestionCompta CI - Système de Comptabilité Gaming Center</title>
+    <!-- CDNs avec fallbacks -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         /* Reset et Base */
         * {
@@ -541,9 +542,33 @@
                 width: 100%;
             }
         }
+
+        /* Style pour le chargement */
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+        }
     </style>
 </head>
 <body>
+    <!-- Indicateur de chargement -->
+    <div id="loading" class="loading">
+        <div style="text-align: center;">
+            <i class="fas fa-spinner fa-spin fa-3x"></i>
+            <p style="margin-top: 20px;">Chargement de l'application...</p>
+        </div>
+    </div>
+
     <div class="container">
         <!-- En-tête -->
         <header>
@@ -661,10 +686,10 @@
             </div>
             
             <div class="form-actions">
-                <button onclick="addTransaction()" class="btn-primary">
+                <button id="saveBtn" class="btn-primary">
                     <i class="fas fa-save"></i> Enregistrer la Transaction
                 </button>
-                <button onclick="clearForm()" class="btn-secondary">
+                <button id="clearBtn" class="btn-secondary">
                     <i class="fas fa-times"></i> Effacer
                 </button>
             </div>
@@ -674,8 +699,8 @@
         <section class="transaction-list">
             <h2><i class="fas fa-history"></i> Journal des Transactions</h2>
             <div class="list-controls">
-                <input type="text" id="search" placeholder="Rechercher une transaction..." onkeyup="filterTransactions()">
-                <select id="filter-type" onchange="filterTransactions()">
+                <input type="text" id="search" placeholder="Rechercher une transaction...">
+                <select id="filter-type">
                     <option value="">Tous les types</option>
                     <option value="vente">Ventes</option>
                     <option value="abonnement">Abonnements</option>
@@ -683,10 +708,10 @@
                     <option value="achat_stock">Achats</option>
                     <option value="depense">Dépenses</option>
                 </select>
-                <button onclick="exportToCSV()" class="btn-export">
+                <button id="exportBtn" class="btn-export">
                     <i class="fas fa-download"></i> Exporter CSV
                 </button>
-                <button onclick="showBackupModal()" class="btn-backup">
+                <button id="backupBtn" class="btn-backup">
                     <i class="fas fa-database"></i> Sauvegarde
                 </button>
             </div>
@@ -720,16 +745,16 @@
         <section class="reports">
             <h2><i class="fas fa-chart-bar"></i> Rapports Rapides</h2>
             <div class="report-actions">
-                <button onclick="generateDailyReport()" class="btn-report">
+                <button id="dailyReportBtn" class="btn-report">
                     <i class="fas fa-calendar-day"></i> Rapport Journalier
                 </button>
-                <button onclick="generateMonthlyReport()" class="btn-report">
+                <button id="monthlyReportBtn" class="btn-report">
                     <i class="fas fa-calendar-alt"></i> Rapport Mensuel
                 </button>
-                <button onclick="showYearlyOverview()" class="btn-report">
+                <button id="yearlyReportBtn" class="btn-report">
                     <i class="fas fa-chart-bar"></i> Vue Annuelle
                 </button>
-                <button onclick="printReport()" class="btn-print">
+                <button id="printBtn" class="btn-print">
                     <i class="fas fa-print"></i> Imprimer
                 </button>
             </div>
@@ -748,7 +773,7 @@
     <!-- Modal pour Sauvegarde -->
     <div id="backupModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="closeBackupModal()">&times;</span>
+            <span class="close" id="closeModal">&times;</span>
             <h2><i class="fas fa-database"></i> Sauvegarde des Données</h2>
             <p>Pour éviter de perdre vos données, effectuez régulièrement une sauvegarde.</p>
             
@@ -756,7 +781,7 @@
                 <div class="backup-option">
                     <h3><i class="fas fa-download"></i> Sauvegarder</h3>
                     <p>Téléchargez toutes vos données sur votre ordinateur</p>
-                    <button onclick="backupData()" class="btn-backup-action">
+                    <button id="backupDataBtn" class="btn-backup-action">
                         <i class="fas fa-file-export"></i> Exporter les Données
                     </button>
                 </div>
@@ -764,7 +789,7 @@
                 <div class="backup-option">
                     <h3><i class="fas fa-upload"></i> Restaurer</h3>
                     <p>Chargez une sauvegarde précédente</p>
-                    <input type="file" id="restoreFile" accept=".json,.txt" onchange="restoreData(event)">
+                    <input type="file" id="restoreFile" accept=".json,.txt">
                     <label for="restoreFile" class="btn-restore">
                         <i class="fas fa-file-import"></i> Choisir un Fichier
                     </label>
@@ -773,7 +798,7 @@
                 <div class="backup-option">
                     <h3><i class="fas fa-print"></i> Impression</h3>
                     <p>Imprimez votre journal de transactions</p>
-                    <button onclick="printTransactions()" class="btn-print-action">
+                    <button id="printTransactionsBtn" class="btn-print-action">
                         <i class="fas fa-print"></i> Imprimer le Journal
                     </button>
                 </div>
@@ -786,153 +811,290 @@
     </div>
 
     <script>
-        // Données initiales
+        // État global
         let transactions = [];
         let charts = {};
 
-        // Configuration initiale
+        // Détection de problèmes
+        function showLoading() {
+            document.getElementById('loading').style.display = 'flex';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function showError(message) {
+            alert("Erreur: " + message);
+            console.error(message);
+        }
+
+        // Vérifier que les bibliothèques sont chargées
+        function checkLibraries() {
+            if (typeof Chart === 'undefined') {
+                showError("Chart.js n'est pas chargé. L'application peut ne pas fonctionner correctement.");
+                return false;
+            }
+            return true;
+        }
+
+        // Initialisation
         document.addEventListener('DOMContentLoaded', function() {
-            // Définir la date d'aujourd'hui par défaut
-            document.getElementById('date').valueAsDate = new Date();
+            console.log("DOM chargé, initialisation...");
+            showLoading();
             
-            // Mettre à jour la date actuelle
-            updateCurrentDate();
+            // Vérifier les bibliothèques
+            if (!checkLibraries()) {
+                hideLoading();
+                return;
+            }
             
-            // Charger les données sauvegardées
-            loadSavedData();
-            
-            // Initialiser les graphiques
-            initializeCharts();
-            
-            // Afficher les transactions
-            renderTransactions();
-            
-            // Calculer et afficher les statistiques
-            updateStats();
-            
-            // Ajouter des données d'exemple si vide
-            if (transactions.length === 0) {
-                addSampleData();
+            try {
+                // Définir la date d'aujourd'hui
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('date').value = today;
+                
+                // Mettre à jour la date affichée
+                updateCurrentDate();
+                
+                // Charger les données
+                loadSavedData();
+                
+                // Initialiser les graphiques
+                initializeCharts();
+                
+                // Afficher les transactions
+                renderTransactions();
+                
+                // Calculer les stats
+                updateStats();
+                
+                // Ajouter des écouteurs d'événements
+                setupEventListeners();
+                
+                // Afficher un message si pas de données
+                if (transactions.length === 0) {
+                    console.log("Aucune donnée, ajout d'exemples...");
+                    setTimeout(addSampleData, 500);
+                }
+                
+                console.log("Initialisation terminée avec succès!");
+            } catch (error) {
+                console.error("Erreur d'initialisation:", error);
+                showError("Erreur lors du chargement: " + error.message);
+            } finally {
+                hideLoading();
             }
         });
 
-        // Mettre à jour la date actuelle
+        // Mettre à jour la date
         function updateCurrentDate() {
-            const now = new Date();
-            const options = { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-            };
-            document.getElementById('current-date').textContent = 
-                now.toLocaleDateString('fr-CI', options);
+            try {
+                const now = new Date();
+                const options = { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                };
+                document.getElementById('current-date').textContent = 
+                    now.toLocaleDateString('fr-CI', options);
+            } catch (error) {
+                console.error("Erreur updateCurrentDate:", error);
+            }
+        }
+
+        // Configurer les écouteurs d'événements
+        function setupEventListeners() {
+            console.log("Configuration des écouteurs d'événements...");
+            
+            // Bouton Enregistrer
+            document.getElementById('saveBtn').addEventListener('click', addTransaction);
+            
+            // Bouton Effacer
+            document.getElementById('clearBtn').addEventListener('click', clearForm);
+            
+            // Bouton Export CSV
+            document.getElementById('exportBtn').addEventListener('click', exportToCSV);
+            
+            // Bouton Sauvegarde
+            document.getElementById('backupBtn').addEventListener('click', showBackupModal);
+            
+            // Bouton Fermer modal
+            document.getElementById('closeModal').addEventListener('click', closeBackupModal);
+            
+            // Bouton Backup dans modal
+            document.getElementById('backupDataBtn').addEventListener('click', backupData);
+            
+            // Bouton Imprimer dans modal
+            document.getElementById('printTransactionsBtn').addEventListener('click', printTransactions);
+            
+            // Bouton Restaurer
+            document.getElementById('restoreFile').addEventListener('change', restoreData);
+            
+            // Boutons Rapports
+            document.getElementById('dailyReportBtn').addEventListener('click', generateDailyReport);
+            document.getElementById('monthlyReportBtn').addEventListener('click', generateMonthlyReport);
+            document.getElementById('yearlyReportBtn').addEventListener('click', showYearlyOverview);
+            document.getElementById('printBtn').addEventListener('click', printReport);
+            
+            // Recherche et filtres
+            document.getElementById('search').addEventListener('keyup', filterTransactions);
+            document.getElementById('filter-type').addEventListener('change', filterTransactions);
+            
+            // Fermer modal en cliquant à l'extérieur
+            window.addEventListener('click', function(event) {
+                const modal = document.getElementById('backupModal');
+                if (event.target === modal) {
+                    closeBackupModal();
+                }
+            });
+            
+            console.log("Écouteurs d'événements configurés avec succès!");
         }
 
         // Initialiser les graphiques
         function initializeCharts() {
-            const ctx1 = document.getElementById('revenueChart').getContext('2d');
-            const ctx2 = document.getElementById('expensesChart').getContext('2d');
-            
-            // Graphique des revenus
-            charts.revenue = new Chart(ctx1, {
-                type: 'line',
-                data: {
-                    labels: ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'],
-                    datasets: [{
-                        label: 'Revenus (FCFA)',
-                        data: new Array(12).fill(0),
-                        borderColor: '#00b09b',
-                        backgroundColor: 'rgba(0, 176, 155, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true
+            console.log("Initialisation des graphiques...");
+            try {
+                const ctx1 = document.getElementById('revenueChart').getContext('2d');
+                const ctx2 = document.getElementById('expensesChart').getContext('2d');
+                
+                // Graphique des revenus
+                charts.revenue = new Chart(ctx1, {
+                    type: 'line',
+                    data: {
+                        labels: ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'],
+                        datasets: [{
+                            label: 'Revenus (FCFA)',
+                            data: new Array(12).fill(0),
+                            borderColor: '#00b09b',
+                            backgroundColor: 'rgba(0, 176, 155, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true
+                            }
                         }
                     }
-                }
-            });
-            
-            // Graphique des dépenses
-            charts.expenses = new Chart(ctx2, {
-                type: 'doughnut',
-                data: {
-                    labels: ['Achats Stock', 'Loyer', 'Salaires', 'Électricité', 'Autres'],
-                    datasets: [{
-                        data: [0, 0, 0, 0, 0],
-                        backgroundColor: [
-                            '#FF6384',
-                            '#36A2EB',
-                            '#FFCE56',
-                            '#4BC0C0',
-                            '#9966FF'
-                        ]
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom'
+                });
+                
+                // Graphique des dépenses
+                charts.expenses = new Chart(ctx2, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Achats Stock', 'Loyer', 'Salaires', 'Électricité', 'Autres'],
+                        datasets: [{
+                            data: [0, 0, 0, 0, 0],
+                            backgroundColor: [
+                                '#FF6384',
+                                '#36A2EB',
+                                '#FFCE56',
+                                '#4BC0C0',
+                                '#9966FF'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            }
                         }
                     }
-                }
-            });
+                });
+                
+                console.log("Graphiques initialisés avec succès!");
+            } catch (error) {
+                console.error("Erreur initialisation graphiques:", error);
+                showError("Impossible de créer les graphiques: " + error.message);
+            }
         }
 
         // Ajouter une transaction
         function addTransaction() {
-            const type = document.getElementById('type').value;
-            const description = document.getElementById('description').value;
-            const amount = parseFloat(document.getElementById('amount').value);
-            const payment = document.getElementById('payment').value;
-            const date = document.getElementById('date').value || new Date().toISOString().split('T')[0];
-            const category = document.getElementById('category').value;
-            
-            // Validation
-            if (!type || !description || isNaN(amount) || amount <= 0) {
-                alert('Veuillez remplir tous les champs obligatoires avec des valeurs valides!');
-                return;
+            try {
+                console.log("Tentative d'ajout de transaction...");
+                
+                const type = document.getElementById('type').value;
+                const description = document.getElementById('description').value.trim();
+                const amount = parseFloat(document.getElementById('amount').value);
+                const payment = document.getElementById('payment').value;
+                const date = document.getElementById('date').value;
+                const category = document.getElementById('category').value.trim();
+                
+                // Validation
+                if (!type) {
+                    alert('Veuillez sélectionner un type de transaction!');
+                    document.getElementById('type').focus();
+                    return;
+                }
+                
+                if (!description) {
+                    alert('Veuillez entrer une description!');
+                    document.getElementById('description').focus();
+                    return;
+                }
+                
+                if (isNaN(amount) || amount <= 0) {
+                    alert('Veuillez entrer un montant valide (supérieur à 0)!');
+                    document.getElementById('amount').focus();
+                    return;
+                }
+                
+                if (!date) {
+                    alert('Veuillez sélectionner une date!');
+                    document.getElementById('date').focus();
+                    return;
+                }
+                
+                // Créer la transaction
+                const transaction = {
+                    id: Date.now(),
+                    type: type,
+                    description: description,
+                    amount: amount,
+                    payment: payment,
+                    date: date,
+                    category: category || getDefaultCategory(type),
+                    timestamp: new Date().toISOString()
+                };
+                
+                console.log("Transaction créée:", transaction);
+                
+                // Ajouter à la liste
+                transactions.unshift(transaction);
+                
+                // Sauvegarder
+                saveData();
+                
+                // Mettre à jour l'affichage
+                renderTransactions();
+                updateStats();
+                updateCharts();
+                
+                // Réinitialiser le formulaire
+                clearForm();
+                
+                // Message de confirmation
+                alert(`✅ Transaction enregistrée!\n${description}\nMontant: ${amount.toLocaleString('fr-CI')} FCFA`);
+                
+                console.log("Transaction ajoutée avec succès!");
+            } catch (error) {
+                console.error("Erreur addTransaction:", error);
+                showError("Erreur lors de l'ajout: " + error.message);
             }
-            
-            // Créer la transaction
-            const transaction = {
-                id: Date.now(),
-                type: type,
-                description: description,
-                amount: amount,
-                payment: payment,
-                date: date,
-                category: category || getDefaultCategory(type),
-                timestamp: new Date().toISOString()
-            };
-            
-            // Ajouter à la liste
-            transactions.unshift(transaction);
-            
-            // Sauvegarder
-            saveData();
-            
-            // Mettre à jour l'affichage
-            renderTransactions();
-            updateStats();
-            updateCharts();
-            
-            // Réinitialiser le formulaire
-            clearForm();
-            
-            // Message de confirmation
-            alert(`Transaction enregistrée: ${description} - ${amount.toLocaleString('fr-CI')} FCFA`);
         }
 
-        // Obtenir la catégorie par défaut
+        // Obtenir catégorie par défaut
         function getDefaultCategory(type) {
             const categories = {
                 'vente': 'Vente',
@@ -952,64 +1114,89 @@
             document.getElementById('description').value = '';
             document.getElementById('amount').value = '';
             document.getElementById('category').value = '';
-            document.getElementById('date').valueAsDate = new Date();
+            document.getElementById('date').value = new Date().toISOString().split('T')[0];
+            document.getElementById('type').selectedIndex = 0;
+            document.getElementById('payment').selectedIndex = 0;
         }
 
         // Afficher les transactions
         function renderTransactions() {
-            const tbody = document.getElementById('transactions-body');
-            tbody.innerHTML = '';
-            
-            if (transactions.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="6" style="text-align: center; padding: 40px;">
-                            <i class="fas fa-inbox" style="font-size: 3rem; color: #ccc; margin-bottom: 15px;"></i>
-                            <p>Aucune transaction enregistrée</p>
-                            <p style="font-size: 0.9rem; color: #666;">Commencez par ajouter votre première transaction ci-dessus</p>
+            try {
+                const tbody = document.getElementById('transactions-body');
+                tbody.innerHTML = '';
+                
+                if (transactions.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 40px;">
+                                <i class="fas fa-inbox" style="font-size: 3rem; color: #ccc; margin-bottom: 15px;"></i>
+                                <p>Aucune transaction enregistrée</p>
+                                <p style="font-size: 0.9rem; color: #666;">Commencez par ajouter votre première transaction ci-dessus</p>
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                // Trier par date (plus récent d'abord)
+                const sortedTransactions = [...transactions].sort((a, b) => 
+                    new Date(b.date + 'T' + (b.timestamp?.split('T')[1] || '00:00:00')) - 
+                    new Date(a.date + 'T' + (a.timestamp?.split('T')[1] || '00:00:00'))
+                );
+                
+                sortedTransactions.forEach(transaction => {
+                    const isIncome = ['vente', 'abonnement', 'recharge'].includes(transaction.type);
+                    const row = document.createElement('tr');
+                    
+                    row.innerHTML = `
+                        <td>${formatDate(transaction.date)}</td>
+                        <td>${escapeHtml(transaction.description)}</td>
+                        <td><span class="type-badge ${isIncome ? 'income' : 'expense'}">${getTypeLabel(transaction.type)}</span></td>
+                        <td style="font-weight: bold; color: ${isIncome ? '#00b09b' : '#ff416c'}">
+                            ${isIncome ? '+' : '-'} ${transaction.amount.toLocaleString('fr-CI')} FCFA
                         </td>
-                    </tr>
-                `;
-                return;
+                        <td>${getPaymentLabel(transaction.payment)}</td>
+                        <td>
+                            <button onclick="deleteTransaction(${transaction.id})" class="btn-delete">
+                                <i class="fas fa-trash"></i> Supprimer
+                            </button>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+                
+                console.log(`${transactions.length} transactions affichées`);
+            } catch (error) {
+                console.error("Erreur renderTransactions:", error);
             }
-            
-            // Trier par date (plus récent d'abord)
-            transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-            
-            transactions.forEach(transaction => {
-                const isIncome = ['vente', 'abonnement', 'recharge'].includes(transaction.type);
-                const row = document.createElement('tr');
-                
-                row.innerHTML = `
-                    <td>${formatDate(transaction.date)}</td>
-                    <td>${transaction.description}</td>
-                    <td><span class="type-badge ${isIncome ? 'income' : 'expense'}">${getTypeLabel(transaction.type)}</span></td>
-                    <td style="font-weight: bold; color: ${isIncome ? '#00b09b' : '#ff416c'}">
-                        ${isIncome ? '+' : '-'} ${transaction.amount.toLocaleString('fr-CI')} FCFA
-                    </td>
-                    <td>${getPaymentLabel(transaction.payment)}</td>
-                    <td>
-                        <button onclick="deleteTransaction(${transaction.id})" class="btn-delete">
-                            <i class="fas fa-trash"></i> Supprimer
-                        </button>
-                    </td>
-                `;
-                
-                tbody.appendChild(row);
-            });
+        }
+
+        // Échapper HTML pour sécurité
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         // Formater la date
         function formatDate(dateString) {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('fr-CI', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-            });
+            try {
+                const date = new Date(dateString);
+                if (isNaN(date.getTime())) {
+                    return dateString;
+                }
+                return date.toLocaleDateString('fr-CI', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                });
+            } catch (error) {
+                return dateString;
+            }
         }
 
-        // Obtenir le label du type
+        // Obtenir label type
         function getTypeLabel(type) {
             const labels = {
                 'vente': 'Vente',
@@ -1024,7 +1211,7 @@
             return labels[type] || type;
         }
 
-        // Obtenir le label du paiement
+        // Obtenir label paiement
         function getPaymentLabel(payment) {
             const labels = {
                 'cash': 'Espèces',
@@ -1038,445 +1225,575 @@
         // Supprimer une transaction
         function deleteTransaction(id) {
             if (confirm('Êtes-vous sûr de vouloir supprimer cette transaction ?')) {
-                transactions = transactions.filter(t => t.id !== id);
-                saveData();
-                renderTransactions();
-                updateStats();
-                updateCharts();
+                try {
+                    transactions = transactions.filter(t => t.id !== id);
+                    saveData();
+                    renderTransactions();
+                    updateStats();
+                    updateCharts();
+                    console.log(`Transaction ${id} supprimée`);
+                } catch (error) {
+                    console.error("Erreur deleteTransaction:", error);
+                }
             }
         }
 
         // Mettre à jour les statistiques
         function updateStats() {
-            const currentMonth = new Date().getMonth();
-            const currentYear = new Date().getFullYear();
-            
-            let monthRevenue = 0;
-            let monthExpenses = 0;
-            let totalRevenue = 0;
-            let totalExpenses = 0;
-            
-            transactions.forEach(transaction => {
-                const transactionDate = new Date(transaction.date);
-                const isIncome = ['vente', 'abonnement', 'recharge'].includes(transaction.type);
+            try {
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
                 
-                if (isIncome) {
-                    totalRevenue += transaction.amount;
-                    if (transactionDate.getMonth() === currentMonth && 
-                        transactionDate.getFullYear() === currentYear) {
-                        monthRevenue += transaction.amount;
+                let monthRevenue = 0;
+                let monthExpenses = 0;
+                let totalRevenue = 0;
+                let totalExpenses = 0;
+                
+                transactions.forEach(transaction => {
+                    const transactionDate = new Date(transaction.date);
+                    const isIncome = ['vente', 'abonnement', 'recharge'].includes(transaction.type);
+                    
+                    if (isIncome) {
+                        totalRevenue += transaction.amount;
+                        if (transactionDate.getMonth() === currentMonth && 
+                            transactionDate.getFullYear() === currentYear) {
+                            monthRevenue += transaction.amount;
+                        }
+                    } else {
+                        totalExpenses += transaction.amount;
+                        if (transactionDate.getMonth() === currentMonth && 
+                            transactionDate.getFullYear() === currentYear) {
+                            monthExpenses += transaction.amount;
+                        }
                     }
-                } else {
-                    totalExpenses += transaction.amount;
-                    if (transactionDate.getMonth() === currentMonth && 
-                        transactionDate.getFullYear() === currentYear) {
-                        monthExpenses += transaction.amount;
-                    }
-                }
-            });
-            
-            const totalBalance = totalRevenue - totalExpenses;
-            const monthProfit = monthRevenue - monthExpenses;
-            
-            // Mettre à jour l'affichage
-            document.getElementById('current-balance').textContent = 
-                `${totalBalance.toLocaleString('fr-CI')} FCFA`;
-            
-            document.getElementById('month-revenue').textContent = 
-                `${monthRevenue.toLocaleString('fr-CI')} FCFA`;
-            
-            document.getElementById('month-expenses').textContent = 
-                `${monthExpenses.toLocaleString('fr-CI')} FCFA`;
-            
-            document.getElementById('transaction-count').textContent = 
-                transactions.length;
-            
-            document.getElementById('net-profit').textContent = 
-                `${monthProfit.toLocaleString('fr-CI')} FCFA`;
-            
-            document.getElementById('total-revenue').textContent = 
-                totalRevenue.toLocaleString('fr-CI');
-            
-            document.getElementById('total-expenses').textContent = 
-                totalExpenses.toLocaleString('fr-CI');
-            
-            document.getElementById('total-balance').textContent = 
-                totalBalance.toLocaleString('fr-CI');
+                });
+                
+                const totalBalance = totalRevenue - totalExpenses;
+                const monthProfit = monthRevenue - monthExpenses;
+                
+                // Mettre à jour l'affichage
+                document.getElementById('current-balance').textContent = 
+                    `${totalBalance.toLocaleString('fr-CI')} FCFA`;
+                
+                document.getElementById('month-revenue').textContent = 
+                    `${monthRevenue.toLocaleString('fr-CI')} FCFA`;
+                
+                document.getElementById('month-expenses').textContent = 
+                    `${monthExpenses.toLocaleString('fr-CI')} FCFA`;
+                
+                document.getElementById('transaction-count').textContent = 
+                    transactions.length;
+                
+                document.getElementById('net-profit').textContent = 
+                    `${monthProfit.toLocaleString('fr-CI')} FCFA`;
+                
+                document.getElementById('total-revenue').textContent = 
+                    totalRevenue.toLocaleString('fr-CI');
+                
+                document.getElementById('total-expenses').textContent = 
+                    totalExpenses.toLocaleString('fr-CI');
+                
+                document.getElementById('total-balance').textContent = 
+                    totalBalance.toLocaleString('fr-CI');
+                    
+                console.log("Statistiques mises à jour");
+            } catch (error) {
+                console.error("Erreur updateStats:", error);
+            }
         }
 
         // Mettre à jour les graphiques
         function updateCharts() {
-            // Préparer les données par mois
-            const monthlyData = new Array(12).fill(0);
-            const expenseData = {
-                'Achats Stock': 0,
-                'Loyer': 0,
-                'Salaires': 0,
-                'Électricité': 0,
-                'Autres': 0
-            };
-            
-            transactions.forEach(transaction => {
-                const date = new Date(transaction.date);
-                const month = date.getMonth();
-                const isIncome = ['vente', 'abonnement', 'recharge'].includes(transaction.type);
+            try {
+                // Préparer les données par mois
+                const monthlyData = new Array(12).fill(0);
+                const expenseData = {
+                    'Achats Stock': 0,
+                    'Loyer': 0,
+                    'Salaires': 0,
+                    'Électricité': 0,
+                    'Autres': 0
+                };
                 
-                if (isIncome) {
-                    monthlyData[month] += transaction.amount;
-                } else {
-                    // Catégoriser les dépenses
-                    const category = transaction.category || 'Autres';
-                    if (expenseData.hasOwnProperty(category)) {
-                        expenseData[category] += transaction.amount;
+                transactions.forEach(transaction => {
+                    const date = new Date(transaction.date);
+                    const month = date.getMonth();
+                    const isIncome = ['vente', 'abonnement', 'recharge'].includes(transaction.type);
+                    
+                    if (isIncome) {
+                        monthlyData[month] += transaction.amount;
                     } else {
-                        expenseData['Autres'] += transaction.amount;
+                        // Catégoriser les dépenses
+                        const category = transaction.category || 'Autres';
+                        if (expenseData.hasOwnProperty(category)) {
+                            expenseData[category] += transaction.amount;
+                        } else {
+                            expenseData['Autres'] += transaction.amount;
+                        }
                     }
+                });
+                
+                // Mettre à jour le graphique des revenus
+                if (charts.revenue) {
+                    charts.revenue.data.datasets[0].data = monthlyData;
+                    charts.revenue.update('none');
                 }
-            });
-            
-            // Mettre à jour le graphique des revenus
-            charts.revenue.data.datasets[0].data = monthlyData;
-            charts.revenue.update();
-            
-            // Mettre à jour le graphique des dépenses
-            charts.expenses.data.datasets[0].data = [
-                expenseData['Achats Stock'],
-                expenseData['Loyer'],
-                expenseData['Salaires'],
-                expenseData['Électricité'],
-                expenseData['Autres']
-            ];
-            charts.expenses.update();
+                
+                // Mettre à jour le graphique des dépenses
+                if (charts.expenses) {
+                    charts.expenses.data.datasets[0].data = [
+                        expenseData['Achats Stock'],
+                        expenseData['Loyer'],
+                        expenseData['Salaires'],
+                        expenseData['Électricité'],
+                        expenseData['Autres']
+                    ];
+                    charts.expenses.update('none');
+                }
+                
+                console.log("Graphiques mis à jour");
+            } catch (error) {
+                console.error("Erreur updateCharts:", error);
+            }
         }
 
         // Filtrer les transactions
         function filterTransactions() {
-            const search = document.getElementById('search').value.toLowerCase();
-            const filterType = document.getElementById('filter-type').value;
-            
-            const filtered = transactions.filter(transaction => {
-                const matchesSearch = transaction.description.toLowerCase().includes(search) ||
-                                     transaction.category.toLowerCase().includes(search);
+            try {
+                const search = document.getElementById('search').value.toLowerCase();
+                const filterType = document.getElementById('filter-type').value;
                 
-                const matchesType = !filterType || 
-                                   (filterType === 'depense' ? 
-                                    !['vente', 'abonnement', 'recharge'].includes(transaction.type) :
-                                    transaction.type === filterType);
+                const filtered = transactions.filter(transaction => {
+                    const matchesSearch = 
+                        transaction.description.toLowerCase().includes(search) ||
+                        (transaction.category && transaction.category.toLowerCase().includes(search));
+                    
+                    const matchesType = !filterType || 
+                        (filterType === 'depense' ? 
+                            !['vente', 'abonnement', 'recharge'].includes(transaction.type) :
+                            transaction.type === filterType);
+                    
+                    return matchesSearch && matchesType;
+                });
                 
-                return matchesSearch && matchesType;
-            });
-            
-            // Afficher les transactions filtrées
-            const tbody = document.getElementById('transactions-body');
-            tbody.innerHTML = '';
-            
-            filtered.forEach(transaction => {
-                const isIncome = ['vente', 'abonnement', 'recharge'].includes(transaction.type);
-                const row = document.createElement('tr');
+                // Afficher les transactions filtrées
+                const tbody = document.getElementById('transactions-body');
+                tbody.innerHTML = '';
                 
-                row.innerHTML = `
-                    <td>${formatDate(transaction.date)}</td>
-                    <td>${transaction.description}</td>
-                    <td><span class="type-badge ${isIncome ? 'income' : 'expense'}">${getTypeLabel(transaction.type)}</span></td>
-                    <td style="font-weight: bold; color: ${isIncome ? '#00b09b' : '#ff416c'}">
-                        ${isIncome ? '+' : '-'} ${transaction.amount.toLocaleString('fr-CI')} FCFA
-                    </td>
-                    <td>${getPaymentLabel(transaction.payment)}</td>
-                    <td>
-                        <button onclick="deleteTransaction(${transaction.id})" class="btn-delete">
-                            <i class="fas fa-trash"></i> Supprimer
-                        </button>
-                    </td>
-                `;
+                if (filtered.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 40px;">
+                                <i class="fas fa-search" style="font-size: 3rem; color: #ccc; margin-bottom: 15px;"></i>
+                                <p>Aucune transaction trouvée</p>
+                                <p style="font-size: 0.9rem; color: #666;">Essayez avec d'autres critères de recherche</p>
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
                 
-                tbody.appendChild(row);
-            });
+                // Trier par date
+                const sortedFiltered = [...filtered].sort((a, b) => 
+                    new Date(b.date) - new Date(a.date)
+                );
+                
+                sortedFiltered.forEach(transaction => {
+                    const isIncome = ['vente', 'abonnement', 'recharge'].includes(transaction.type);
+                    const row = document.createElement('tr');
+                    
+                    row.innerHTML = `
+                        <td>${formatDate(transaction.date)}</td>
+                        <td>${escapeHtml(transaction.description)}</td>
+                        <td><span class="type-badge ${isIncome ? 'income' : 'expense'}">${getTypeLabel(transaction.type)}</span></td>
+                        <td style="font-weight: bold; color: ${isIncome ? '#00b09b' : '#ff416c'}">
+                            ${isIncome ? '+' : '-'} ${transaction.amount.toLocaleString('fr-CI')} FCFA
+                        </td>
+                        <td>${getPaymentLabel(transaction.payment)}</td>
+                        <td>
+                            <button onclick="deleteTransaction(${transaction.id})" class="btn-delete">
+                                <i class="fas fa-trash"></i> Supprimer
+                            </button>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+                
+                console.log(`${filtered.length} transactions filtrées`);
+            } catch (error) {
+                console.error("Erreur filterTransactions:", error);
+            }
         }
 
         // Exporter en CSV
         function exportToCSV() {
-            if (transactions.length === 0) {
-                alert('Aucune donnée à exporter!');
-                return;
+            try {
+                if (transactions.length === 0) {
+                    alert('Aucune donnée à exporter!');
+                    return;
+                }
+                
+                const headers = ['Date', 'Description', 'Type', 'Montant (FCFA)', 'Mode Paiement', 'Catégorie'];
+                const csv = [
+                    headers.join(','),
+                    ...transactions.map(t => [
+                        formatDate(t.date),
+                        `"${t.description.replace(/"/g, '""')}"`,
+                        getTypeLabel(t.type),
+                        t.amount,
+                        getPaymentLabel(t.payment),
+                        t.category || ''
+                    ].join(','))
+                ].join('\n');
+                
+                const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                
+                link.setAttribute('href', url);
+                link.setAttribute('download', `compta_gaming_${new Date().toISOString().split('T')[0]}.csv`);
+                link.style.visibility = 'hidden';
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                setTimeout(() => URL.revokeObjectURL(url), 100);
+                
+                alert(`✅ Fichier CSV exporté avec ${transactions.length} transactions!`);
+                console.log("CSV exporté avec succès");
+            } catch (error) {
+                console.error("Erreur exportToCSV:", error);
+                showError("Erreur lors de l'export: " + error.message);
             }
-            
-            const headers = ['Date', 'Description', 'Type', 'Montant (FCFA)', 'Mode Paiement', 'Catégorie'];
-            const csv = [
-                headers.join(','),
-                ...transactions.map(t => [
-                    formatDate(t.date),
-                    `"${t.description}"`,
-                    getTypeLabel(t.type),
-                    t.amount,
-                    getPaymentLabel(t.payment),
-                    t.category
-                ].join(','))
-            ].join('\n');
-            
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            
-            link.setAttribute('href', url);
-            link.setAttribute('download', `compta_gaming_${new Date().toISOString().split('T')[0]}.csv`);
-            link.style.visibility = 'hidden';
-            
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            alert(`Fichier CSV exporté avec ${transactions.length} transactions!`);
         }
 
-        // Générer un rapport journalier
+        // Générer rapport journalier
         function generateDailyReport() {
-            const today = new Date().toISOString().split('T')[0];
-            const todayTransactions = transactions.filter(t => t.date === today);
-            
-            if (todayTransactions.length === 0) {
-                alert('Aucune transaction aujourd\'hui!');
-                return;
-            }
-            
-            const revenue = todayTransactions
-                .filter(t => ['vente', 'abonnement', 'recharge'].includes(t.type))
-                .reduce((sum, t) => sum + t.amount, 0);
-            
-            const expenses = todayTransactions
-                .filter(t => !['vente', 'abonnement', 'recharge'].includes(t.type))
-                .reduce((sum, t) => sum + t.amount, 0);
-            
-            const report = `
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                const todayTransactions = transactions.filter(t => t.date === today);
+                
+                if (todayTransactions.length === 0) {
+                    alert('Aucune transaction aujourd\'hui!');
+                    return;
+                }
+                
+                const revenue = todayTransactions
+                    .filter(t => ['vente', 'abonnement', 'recharge'].includes(t.type))
+                    .reduce((sum, t) => sum + t.amount, 0);
+                
+                const expenses = todayTransactions
+                    .filter(t => !['vente', 'abonnement', 'recharge'].includes(t.type))
+                    .reduce((sum, t) => sum + t.amount, 0);
+                
+                const report = `
 === RAPPORT JOURNALIER ===
 Date: ${formatDate(today)}
 Total Transactions: ${todayTransactions.length}
 Revenus: ${revenue.toLocaleString('fr-CI')} FCFA
 Dépenses: ${expenses.toLocaleString('fr-CI')} FCFA
 Bénéfice: ${(revenue - expenses).toLocaleString('fr-CI')} FCFA
-
+────────────────────
 Transactions:
 ${todayTransactions.map(t => 
     `- ${t.description}: ${['vente', 'abonnement', 'recharge'].includes(t.type) ? '+' : '-'}${t.amount.toLocaleString('fr-CI')} FCFA`
 ).join('\n')}
-            `;
-            
-            alert(report);
+                `;
+                
+                alert(report);
+                console.log("Rapport journalier généré");
+            } catch (error) {
+                console.error("Erreur generateDailyReport:", error);
+            }
         }
 
-        // Générer un rapport mensuel
+        // Générer rapport mensuel
         function generateMonthlyReport() {
-            const currentMonth = new Date().getMonth();
-            const currentYear = new Date().getFullYear();
-            
-            const monthTransactions = transactions.filter(t => {
-                const date = new Date(t.date);
-                return date.getMonth() === currentMonth && 
-                       date.getFullYear() === currentYear;
-            });
-            
-            if (monthTransactions.length === 0) {
-                alert('Aucune transaction ce mois-ci!');
-                return;
-            }
-            
-            const revenue = monthTransactions
-                .filter(t => ['vente', 'abonnement', 'recharge'].includes(t.type))
-                .reduce((sum, t) => sum + t.amount, 0);
-            
-            const expenses = monthTransactions
-                .filter(t => !['vente', 'abonnement', 'recharge'].includes(t.type))
-                .reduce((sum, t) => sum + t.amount, 0);
-            
-            const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-                               'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
-            
-            const report = `
+            try {
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                
+                const monthTransactions = transactions.filter(t => {
+                    const date = new Date(t.date);
+                    return date.getMonth() === currentMonth && 
+                           date.getFullYear() === currentYear;
+                });
+                
+                if (monthTransactions.length === 0) {
+                    alert('Aucune transaction ce mois-ci!');
+                    return;
+                }
+                
+                const revenue = monthTransactions
+                    .filter(t => ['vente', 'abonnement', 'recharge'].includes(t.type))
+                    .reduce((sum, t) => sum + t.amount, 0);
+                
+                const expenses = monthTransactions
+                    .filter(t => !['vente', 'abonnement', 'recharge'].includes(t.type))
+                    .reduce((sum, t) => sum + t.amount, 0);
+                
+                const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+                                   'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+                
+                const report = `
 === RAPPORT MENSUEL ===
 Mois: ${monthNames[currentMonth]} ${currentYear}
 Total Transactions: ${monthTransactions.length}
+────────────────────
 Total Revenus: ${revenue.toLocaleString('fr-CI')} FCFA
 Total Dépenses: ${expenses.toLocaleString('fr-CI')} FCFA
 Bénéfice Net: ${(revenue - expenses).toLocaleString('fr-CI')} FCFA
-
+────────────────────
 Détail par Catégorie:
 Ventes: ${monthTransactions.filter(t => t.type === 'vente').reduce((s, t) => s + t.amount, 0).toLocaleString('fr-CI')} FCFA
 Abonnements: ${monthTransactions.filter(t => t.type === 'abonnement').reduce((s, t) => s + t.amount, 0).toLocaleString('fr-CI')} FCFA
 Recharges: ${monthTransactions.filter(t => t.type === 'recharge').reduce((s, t) => s + t.amount, 0).toLocaleString('fr-CI')} FCFA
 Achats: ${monthTransactions.filter(t => t.type === 'achat_stock').reduce((s, t) => s + t.amount, 0).toLocaleString('fr-CI')} FCFA
-            `;
-            
-            alert(report);
+                `;
+                
+                alert(report);
+                console.log("Rapport mensuel généré");
+            } catch (error) {
+                console.error("Erreur generateMonthlyReport:", error);
+            }
         }
 
-        // Afficher la vue annuelle
+        // Vue annuelle
         function showYearlyOverview() {
-            const yearlyData = {};
-            
-            transactions.forEach(t => {
-                const date = new Date(t.date);
-                const year = date.getFullYear();
-                const month = date.getMonth();
-                const isIncome = ['vente', 'abonnement', 'recharge'].includes(t.type);
+            try {
+                const yearlyData = {};
                 
-                if (!yearlyData[year]) {
-                    yearlyData[year] = new Array(12).fill(0);
-                }
+                transactions.forEach(t => {
+                    const date = new Date(t.date);
+                    const year = date.getFullYear();
+                    const month = date.getMonth();
+                    const isIncome = ['vente', 'abonnement', 'recharge'].includes(t.type);
+                    
+                    if (!yearlyData[year]) {
+                        yearlyData[year] = new Array(12).fill(0);
+                    }
+                    
+                    if (isIncome) {
+                        yearlyData[year][month] += t.amount;
+                    }
+                });
                 
-                if (isIncome) {
-                    yearlyData[year][month] += t.amount;
-                }
-            });
-            
-            const currentYear = new Date().getFullYear();
-            const data = yearlyData[currentYear] || new Array(12).fill(0);
-            const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 
-                               'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-            
-            let overview = `=== VUE ANNUELLE ${currentYear} ===\n`;
-            
-            data.forEach((amount, index) => {
-                overview += `${monthNames[index]}: ${amount.toLocaleString('fr-CI')} FCFA\n`;
-            });
-            
-            overview += `\nTotal Annuel: ${data.reduce((a, b) => a + b, 0).toLocaleString('fr-CI')} FCFA`;
-            
-            alert(overview);
+                const currentYear = new Date().getFullYear();
+                const data = yearlyData[currentYear] || new Array(12).fill(0);
+                const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 
+                                   'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+                
+                let overview = `=== VUE ANNUELLE ${currentYear} ===\n\n`;
+                
+                data.forEach((amount, index) => {
+                    overview += `${monthNames[index]}: ${amount.toLocaleString('fr-CI')} FCFA\n`;
+                });
+                
+                overview += `\n───────────────\n`;
+                overview += `Total Annuel: ${data.reduce((a, b) => a + b, 0).toLocaleString('fr-CI')} FCFA`;
+                
+                alert(overview);
+                console.log("Vue annuelle affichée");
+            } catch (error) {
+                console.error("Erreur showYearlyOverview:", error);
+            }
         }
 
         // Sauvegarder les données
         function saveData() {
-            const data = {
-                transactions: transactions,
-                lastSaved: new Date().toISOString()
-            };
-            
-            localStorage.setItem('gamingComptaData', JSON.stringify(data, null, 2));
-            console.log('Données sauvegardées localement');
-        }
-
-        // Charger les données sauvegardées
-        function loadSavedData() {
-            const saved = localStorage.getItem('gamingComptaData');
-            
-            if (saved) {
-                try {
-                    const data = JSON.parse(saved);
-                    transactions = data.transactions || [];
-                    console.log(`Données chargées: ${transactions.length} transactions`);
-                } catch (e) {
-                    console.error('Erreur de chargement des données:', e);
-                    transactions = [];
-                }
+            try {
+                const data = {
+                    transactions: transactions,
+                    lastSaved: new Date().toISOString(),
+                    version: '1.0'
+                };
+                
+                localStorage.setItem('gamingComptaData', JSON.stringify(data));
+                console.log('Données sauvegardées:', transactions.length, 'transactions');
+            } catch (error) {
+                console.error("Erreur saveData:", error);
+                showError("Erreur lors de la sauvegarde!");
             }
         }
 
-        // Ajouter des données d'exemple
-        function addSampleData() {
-            const sampleTransactions = [
-                {
-                    id: 1,
-                    type: 'vente',
-                    description: 'PS5 + FIFA 24',
-                    amount: 450000,
-                    payment: 'cash',
-                    date: new Date().toISOString().split('T')[0],
-                    category: 'Console'
-                },
-                {
-                    id: 2,
-                    type: 'abonnement',
-                    description: 'Abonnement Mensuel Gold',
-                    amount: 25000,
-                    payment: 'mobile',
-                    date: new Date().toISOString().split('T')[0],
-                    category: 'Abonnement'
-                },
-                {
-                    id: 3,
-                    type: 'recharge',
-                    description: 'Recharge Orange Money',
-                    amount: 10000,
-                    payment: 'cash',
-                    date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-                    category: 'Recharge'
-                },
-                {
-                    id: 4,
-                    type: 'achat_stock',
-                    description: 'Achat boissons et snacks',
-                    amount: 75000,
-                    payment: 'cash',
-                    date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-                    category: 'Achats Stock'
-                },
-                {
-                    id: 5,
-                    type: 'loyer',
-                    description: 'Loyer local commercial',
-                    amount: 150000,
-                    payment: 'carte',
-                    date: new Date(Date.now() - 172800000).toISOString().split('T')[0],
-                    category: 'Loyer'
+        // Charger les données
+        function loadSavedData() {
+            try {
+                const saved = localStorage.getItem('gamingComptaData');
+                
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    transactions = data.transactions || [];
+                    console.log(`Données chargées: ${transactions.length} transactions`);
+                } else {
+                    console.log("Aucune donnée sauvegardée trouvée");
+                    transactions = [];
                 }
-            ];
-            
-            transactions.push(...sampleTransactions);
-            saveData();
-            renderTransactions();
-            updateStats();
-            updateCharts();
+            } catch (error) {
+                console.error("Erreur loadSavedData:", error);
+                transactions = [];
+            }
+        }
+
+        // Ajouter données d'exemple
+        function addSampleData() {
+            try {
+                const sampleTransactions = [
+                    {
+                        id: Date.now() + 1,
+                        type: 'vente',
+                        description: 'PS5 + FIFA 24',
+                        amount: 450000,
+                        payment: 'cash',
+                        date: new Date().toISOString().split('T')[0],
+                        category: 'Console',
+                        timestamp: new Date().toISOString()
+                    },
+                    {
+                        id: Date.now() + 2,
+                        type: 'abonnement',
+                        description: 'Abonnement Mensuel Gold',
+                        amount: 25000,
+                        payment: 'mobile',
+                        date: new Date().toISOString().split('T')[0],
+                        category: 'Abonnement',
+                        timestamp: new Date().toISOString()
+                    },
+                    {
+                        id: Date.now() + 3,
+                        type: 'recharge',
+                        description: 'Recharge Orange Money 10.000',
+                        amount: 10000,
+                        payment: 'cash',
+                        date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+                        category: 'Recharge',
+                        timestamp: new Date(Date.now() - 86400000).toISOString()
+                    },
+                    {
+                        id: Date.now() + 4,
+                        type: 'achat_stock',
+                        description: 'Achat boissons et snacks',
+                        amount: 75000,
+                        payment: 'cash',
+                        date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+                        category: 'Achats Stock',
+                        timestamp: new Date(Date.now() - 86400000).toISOString()
+                    },
+                    {
+                        id: Date.now() + 5,
+                        type: 'loyer',
+                        description: 'Loyer local commercial',
+                        amount: 150000,
+                        payment: 'carte',
+                        date: new Date(Date.now() - 172800000).toISOString().split('T')[0],
+                        category: 'Loyer',
+                        timestamp: new Date(Date.now() - 172800000).toISOString()
+                    }
+                ];
+                
+                transactions.push(...sampleTransactions);
+                saveData();
+                renderTransactions();
+                updateStats();
+                updateCharts();
+                
+                console.log("Données d'exemple ajoutées");
+            } catch (error) {
+                console.error("Erreur addSampleData:", error);
+            }
         }
 
         // Sauvegarde des données
         function backupData() {
-            const data = {
-                transactions: transactions,
-                metadata: {
-                    exported: new Date().toISOString(),
-                    totalTransactions: transactions.length,
-                    totalAmount: transactions.reduce((sum, t) => sum + t.amount, 0)
+            try {
+                if (transactions.length === 0) {
+                    alert('Aucune donnée à sauvegarder!');
+                    return;
                 }
-            };
-            
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            
-            link.href = url;
-            link.download = `sauvegarde_compta_${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            alert(`Sauvegarde réussie! ${transactions.length} transactions exportées.`);
+                
+                const data = {
+                    transactions: transactions,
+                    metadata: {
+                        exported: new Date().toISOString(),
+                        totalTransactions: transactions.length,
+                        totalAmount: transactions.reduce((sum, t) => sum + t.amount, 0),
+                        version: '1.0'
+                    }
+                };
+                
+                const blob = new Blob([JSON.stringify(data, null, 2)], { 
+                    type: 'application/json;charset=utf-8' 
+                });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                
+                const today = new Date().toISOString().split('T')[0];
+                link.href = url;
+                link.download = `sauvegarde_compta_${today}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                setTimeout(() => URL.revokeObjectURL(url), 100);
+                
+                alert(`✅ Sauvegarde réussie!\n${transactions.length} transactions exportées.`);
+                console.log("Données sauvegardées");
+            } catch (error) {
+                console.error("Erreur backupData:", error);
+                showError("Erreur lors de la sauvegarde!");
+            }
         }
 
         // Restaurer des données
         function restoreData(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            if (!confirm('Attention! Cela remplacera toutes vos données actuelles. Continuer?')) {
-                return;
-            }
-            
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    transactions = data.transactions || [];
-                    saveData();
-                    renderTransactions();
-                    updateStats();
-                    updateCharts();
-                    
-                    alert(`Données restaurées avec succès! ${transactions.length} transactions chargées.`);
-                } catch (error) {
-                    alert('Erreur: Fichier de sauvegarde invalide!');
-                    console.error(error);
+            try {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                if (!confirm('⚠️ ATTENTION!\nCela remplacera TOUTES vos données actuelles.\nVoulez-vous continuer?')) {
+                    event.target.value = '';
+                    return;
                 }
-            };
-            reader.readAsText(file);
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        if (!data.transactions || !Array.isArray(data.transactions)) {
+                            throw new Error('Format de fichier invalide');
+                        }
+                        
+                        transactions = data.transactions;
+                        saveData();
+                        renderTransactions();
+                        updateStats();
+                        updateCharts();
+                        
+                        alert(`✅ Données restaurées avec succès!\n${transactions.length} transactions chargées.`);
+                        console.log("Données restaurées:", transactions.length, "transactions");
+                        
+                        // Réinitialiser le champ file
+                        event.target.value = '';
+                    } catch (error) {
+                        console.error("Erreur parsing JSON:", error);
+                        alert('❌ Erreur: Fichier de sauvegarde invalide ou corrompu!');
+                        event.target.value = '';
+                    }
+                };
+                
+                reader.onerror = function() {
+                    alert('❌ Erreur de lecture du fichier!');
+                    event.target.value = '';
+                };
+                
+                reader.readAsText(file);
+            } catch (error) {
+                console.error("Erreur restoreData:", error);
+                alert('❌ Erreur lors de la restauration!');
+                if (event.target) event.target.value = '';
+            }
         }
 
         // Gestion du modal
@@ -1494,55 +1811,157 @@ Achats: ${monthTransactions.filter(t => t.type === 'achat_stock').reduce((s, t) 
         }
 
         function printTransactions() {
-            const printWindow = window.open('', '_blank');
-            printWindow.document.write(`
-                <html>
-                    <head>
-                        <title>Journal des Transactions - Gaming Center</title>
-                        <style>
-                            body { font-family: Arial, sans-serif; margin: 20px; }
-                            h1 { color: #1a2980; }
-                            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-                            th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-                            th { background-color: #f8f9fa; }
-                            .total { font-weight: bold; margin-top: 20px; }
-                        </style>
-                    </head>
-                    <body>
-                        <h1>Journal des Transactions</h1>
-                        <p>Date d'impression: ${new Date().toLocaleDateString('fr-CI')}</p>
-                        <p>Total transactions: ${transactions.length}</p>
-                        <table>
-                            <tr>
-                                <th>Date</th>
-                                <th>Description</th>
-                                <th>Type</th>
-                                <th>Montant (FCFA)</th>
-                                <th>Mode Paiement</th>
-                            </tr>
-                            ${transactions.map(t => `
+            try {
+                if (transactions.length === 0) {
+                    alert('Aucune transaction à imprimer!');
+                    return;
+                }
+                
+                const printWindow = window.open('', '_blank', 'width=800,height=600');
+                if (!printWindow) {
+                    alert('Veuillez autoriser les popups pour l\'impression.');
+                    return;
+                }
+                
+                printWindow.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                        <head>
+                            <title>Journal des Transactions - Gaming Center</title>
+                            <style>
+                                body { 
+                                    font-family: Arial, sans-serif; 
+                                    margin: 30px; 
+                                    line-height: 1.6;
+                                }
+                                h1 { 
+                                    color: #1a2980; 
+                                    text-align: center;
+                                    margin-bottom: 10px;
+                                }
+                                .subtitle {
+                                    text-align: center;
+                                    color: #666;
+                                    margin-bottom: 30px;
+                                    border-bottom: 2px solid #1a2980;
+                                    padding-bottom: 10px;
+                                }
+                                table { 
+                                    width: 100%; 
+                                    border-collapse: collapse; 
+                                    margin: 20px 0; 
+                                    font-size: 14px;
+                                }
+                                th, td { 
+                                    border: 1px solid #ddd; 
+                                    padding: 12px 8px; 
+                                    text-align: left; 
+                                }
+                                th { 
+                                    background-color: #f8f9fa; 
+                                    font-weight: bold;
+                                    color: #1a2980;
+                                }
+                                .total { 
+                                    font-weight: bold; 
+                                    margin-top: 30px;
+                                    padding: 15px;
+                                    background-color: #f8f9fa;
+                                    border-radius: 5px;
+                                }
+                                .total p {
+                                    margin: 8px 0;
+                                }
+                                .income { color: #00b09b; }
+                                .expense { color: #ff416c; }
+                                .print-date {
+                                    text-align: right;
+                                    color: #666;
+                                    margin-bottom: 20px;
+                                    font-size: 14px;
+                                }
+                                @media print {
+                                    body { margin: 15px; }
+                                    .no-print { display: none; }
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <h1>Journal des Transactions</h1>
+                            <div class="subtitle">Gaming Center - Comptabilité</div>
+                            <div class="print-date">
+                                Imprimé le: ${new Date().toLocaleDateString('fr-CI', { 
+                                    day: '2-digit', 
+                                    month: '2-digit', 
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                })}
+                            </div>
+                            <table>
                                 <tr>
-                                    <td>${formatDate(t.date)}</td>
-                                    <td>${t.description}</td>
-                                    <td>${getTypeLabel(t.type)}</td>
-                                    <td>${['vente', 'abonnement', 'recharge'].includes(t.type) ? '+' : '-'}${t.amount.toLocaleString('fr-CI')}</td>
-                                    <td>${getPaymentLabel(t.payment)}</td>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Type</th>
+                                    <th>Montant (FCFA)</th>
+                                    <th>Mode Paiement</th>
                                 </tr>
-                            `).join('')}
-                        </table>
-                        <div class="total">
-                            <p>Total Revenus: ${transactions.filter(t => ['vente', 'abonnement', 'recharge'].includes(t.type)).reduce((s, t) => s + t.amount, 0).toLocaleString('fr-CI')} FCFA</p>
-                            <p>Total Dépenses: ${transactions.filter(t => !['vente', 'abonnement', 'recharge'].includes(t.type)).reduce((s, t) => s + t.amount, 0).toLocaleString('fr-CI')} FCFA</p>
-                            <p>Balance Totale: ${(transactions.filter(t => ['vente', 'abonnement', 'recharge'].includes(t.type)).reduce((s, t) => s + t.amount, 0) - 
-                                               transactions.filter(t => !['vente', 'abonnement', 'recharge'].includes(t.type)).reduce((s, t) => s + t.amount, 0)).toLocaleString('fr-CI')} FCFA</p>
-                        </div>
-                        <script>
-                            window.onload = function() { window.print(); window.close(); }
-                        </script>
-                    </body>
-                </html>
-            `);
+                                ${transactions.map(t => {
+                                    const isIncome = ['vente', 'abonnement', 'recharge'].includes(t.type);
+                                    return `
+                                        <tr>
+                                            <td>${formatDate(t.date)}</td>
+                                            <td>${escapeHtml(t.description)}</td>
+                                            <td>${getTypeLabel(t.type)}</td>
+                                            <td class="${isIncome ? 'income' : 'expense'}">
+                                                ${isIncome ? '+' : '-'}${t.amount.toLocaleString('fr-CI')}
+                                            </td>
+                                            <td>${getPaymentLabel(t.payment)}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </table>
+                            <div class="total">
+                                <p>Total Revenus: ${transactions.filter(t => ['vente', 'abonnement', 'recharge'].includes(t.type))
+                                    .reduce((s, t) => s + t.amount, 0).toLocaleString('fr-CI')} FCFA</p>
+                                <p>Total Dépenses: ${transactions.filter(t => !['vente', 'abonnement', 'recharge'].includes(t.type))
+                                    .reduce((s, t) => s + t.amount, 0).toLocaleString('fr-CI')} FCFA</p>
+                                <p>Balance Totale: ${(transactions.filter(t => ['vente', 'abonnement', 'recharge'].includes(t.type))
+                                    .reduce((s, t) => s + t.amount, 0) - 
+                                    transactions.filter(t => !['vente', 'abonnement', 'recharge'].includes(t.type))
+                                    .reduce((s, t) => s + t.amount, 0)).toLocaleString('fr-CI')} FCFA</p>
+                            </div>
+                            <div style="margin-top: 40px; text-align: center; color: #666; font-size: 12px;">
+                                <p>© 2024 GestionComptaCI - Document généré automatiquement</p>
+                            </div>
+                            <script>
+                                window.onload = function() { 
+                                    setTimeout(function() {
+                                        window.print();
+                                        setTimeout(function() {
+                                            window.close();
+                                        }, 500);
+                                    }, 500);
+                                }
+                            </script>
+                        </body>
+                    </html>
+                `);
+                
+                console.log("Fenêtre d'impression ouverte");
+            } catch (error) {
+                console.error("Erreur printTransactions:", error);
+                alert('Erreur lors de l\'impression!');
+            }
         }
+
+        // Message de démarrage
+        console.log("Application GestionComptaCI chargée avec succès!");
+        console.log("Instructions:");
+        console.log("1. Remplissez le formulaire pour ajouter une transaction");
+        console.log("2. Cliquez sur 'Enregistrer' pour sauvegarder");
+        console.log("3. Utilisez les boutons pour exporter, sauvegarder, etc.");
+        console.log("4. Les données sont sauvegardées automatiquement");
     </script>
 </body>
 </html>
